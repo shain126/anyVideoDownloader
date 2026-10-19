@@ -174,8 +174,14 @@ def inspect(url, playlist=False, _depth=0):
 
 
 def clean_error(e):
-    msg = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
-    return msg.replace("ERROR: ", "").strip()
+    msg = re.sub(r"\x1b\[[0-9;]*m", "", str(e)).replace("ERROR: ", "").strip()
+    if "unable to obtain file audio codec" in msg:
+        return "This video has no sound, so there is no audio to save."
+    if "--cookies" in msg or re.search(r"log(ged)?[ -]?in|sign in|private", msg, re.I):
+        msg = re.split(r"\. (Use|Check|See) ", msg)[0].rstrip(".") + (
+            ". This post may need you to be signed in: choose your browser under "
+            "\u201cUse login cookies from\u201d (and be logged in to the site there), then try again.")
+    return msg
 
 
 # --------------------------------------------------------------- downloads --
@@ -199,7 +205,10 @@ def build_opts(job_id, mode, quality, audio_fmt, video_fmt, folder, playlist, re
     if playlist:
         tmpl = "%(playlist_title|Playlist).80B/%(playlist_index|0)03d - " + tmpl
     opts = base_opts() | {
-        "outtmpl": str(Path(folder) / tmpl),
+        "outtmpl": tmpl,
+        # Each job works in its own temp folder, so two downloads of the same
+        # link (e.g. video + audio) never write to the same intermediate files.
+        "paths": {"home": folder, "temp": job["tmpdir"]},
         "noplaylist": not playlist,
         "windowsfilenames": True,
         "continuedl": True,
@@ -229,10 +238,6 @@ def build_opts(job_id, mode, quality, audio_fmt, video_fmt, folder, playlist, re
             opts["format"] = f"b{h}/b"  # no ffmpeg: only pre-merged files
 
     def progress(d):
-        # Remember every file this job writes so a cancel can clean them all up.
-        for k in ("filename", "tmpfilename"):
-            if d.get(k):
-                job["temp"].add(d[k])
         if job.get("cancel"):
             raise Cancelled()
         if d["status"] == "downloading":
@@ -266,17 +271,13 @@ def build_opts(job_id, mode, quality, audio_fmt, video_fmt, folder, playlist, re
 
 
 def discard(job_id):
-    """Mark a job cancelled and delete its partial and finished files."""
+    """Mark a job cancelled. Partial files live in the job's temp folder (removed
+    by run_job); a finished single file is deleted too. In a playlist, items that
+    already finished are kept."""
     job = JOBS[job_id]
-    paths = set(job["temp"]) | ({job["file"]} if job.get("file") else set())
-    for fp in paths:
-        # In a playlist, keep items that already finished; only drop partial files.
-        keep_finished = job.get("playlist") and not fp.endswith(".part")
-        for f in ((fp + ".part", fp + ".ytdl") if keep_finished else (fp, fp + ".part", fp + ".ytdl")):
-            try:
-                os.remove(f)
-            except OSError:
-                pass
+    fp = job.get("file")
+    if fp and not job.get("playlist") and os.path.isfile(fp):
+        os.remove(fp)
     update(job_id, status="cancelled", file=None, speed=None, eta=None)
 
 
@@ -300,6 +301,8 @@ def run_job(job_id, url, **kw):
             discard(job_id)
         else:
             update(job_id, status="error", error=clean_error(e), speed=None, eta=None)
+    finally:
+        shutil.rmtree(JOBS[job_id]["tmpdir"], ignore_errors=True)
 
 
 def start_job(p):
@@ -307,8 +310,8 @@ def start_job(p):
     with JOBS_LOCK:
         JOBS[job_id] = {"id": job_id, "url": p["url"], "title": p.get("title") or p["url"],
                         "mode": p.get("mode", "video"), "status": "queued", "percent": 0,
-                        "file": None, "error": None, "cancel": False, "temp": set(),
-                        "playlist": bool(p.get("playlist"))}
+                        "file": None, "error": None, "cancel": False, "playlist": bool(p.get("playlist")),
+                        "tmpdir": str(Path(SETTINGS["folder"]) / f".partial-{job_id}")}
     kw = dict(mode=p.get("mode", "video"), quality=str(p.get("quality", "best")),
               audio_fmt=p.get("audio_fmt", "mp3"), video_fmt=p.get("video_fmt", "mp4"),
               folder=SETTINGS["folder"], playlist=bool(p.get("playlist")),
@@ -368,7 +371,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         elif self.path == "/api/jobs":
             with JOBS_LOCK:
-                jobs = [{k: v for k, v in j.items() if k not in ("cancel", "temp")} for j in JOBS.values()]
+                jobs = [{k: v for k, v in j.items() if k not in ("cancel", "tmpdir")} for j in JOBS.values()]
             self.send_json({"jobs": jobs})
         elif self.path == "/api/settings":
             self.send_json(SETTINGS | {"ffmpeg": bool(FFMPEG),

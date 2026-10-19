@@ -21,6 +21,12 @@ Double-click **Video Downloader.app**, then:
 2. Choose **Video** (quality: Best/1080p/720p…, format: mp4/mkv/webm) or **Audio only** (MP3, M4A, Opus, WAV, FLAC).
 3. Click **Download**. Files go to `~/Downloads/Video Downloader` (change it with **Change…**).
 
+## Supported sites
+Works with YouTube, Vimeo, Reddit, TikTok, SoundCloud and ~1,800 other sites via [yt-dlp](https://github.com/yt-dlp/yt-dlp), plus any page with an embedded video.
+
+- Videos with no sound can only be downloaded as video.
+
+## Tips
 - **Playlists/channels:** tick "Download whole playlist", then **Download all**.
 - **Unsupported sites:** the app scans the page for direct media links (`<video>`, `.mp4`, `.m3u8`, `.mp3`…) and lists them.
 - **Private or sign-in-only videos:** set "Use login cookies from" to the browser you're signed in with.
