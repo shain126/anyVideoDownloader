@@ -7,7 +7,7 @@ Requires Python 3.10+ and, for HD video and MP3 conversion, ffmpeg.
 
 ```bash
 brew install python ffmpeg
-git clone <this repo> && cd anyVideoDownloader
+git clone https://github.com/shain126/anyVideoDownloader.git && cd anyVideoDownloader
 ./setup.sh
 ```
 
@@ -36,3 +36,6 @@ Double-click **Video Downloader.app**, then:
 Requires Python 3 and ffmpeg (`brew install ffmpeg`) for merging HD video and converting to MP3.
 
 Only download content you have the right to save. DRM-protected streaming services (Netflix, Disney+, Spotify, etc.) aren't supported.
+
+## License
+MIT — see [LICENSE](LICENSE).
