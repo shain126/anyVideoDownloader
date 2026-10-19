@@ -1,0 +1,33 @@
+#!/bin/bash
+# Runs app.py from the folder that contains this .app bundle.
+DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+PY="$DIR/.venv/bin/python"
+LOCK="$DIR/.setup.lock"
+LOG=/tmp/video-downloader-setup.log
+
+alert() { osascript -e 'on run argv
+  display dialog (item 1 of argv) with title "Video Downloader" buttons {"OK"} default button 1 with icon caution
+end run' "$1" >/dev/null 2>&1; }
+notify() { osascript -e 'on run argv
+  display notification (item 1 of argv) with title "Video Downloader"
+end run' "$1" >/dev/null 2>&1; }
+
+if ! "$PY" -c "import yt_dlp, webview" >/dev/null 2>&1; then
+  # mkdir is atomic: only one launch runs setup, later ones just say so.
+  if ! mkdir "$LOCK" 2>/dev/null; then
+    notify "Still setting up — the app will open when it's ready."
+    exit 0
+  fi
+  trap 'rmdir "$LOCK" 2>/dev/null' EXIT
+  notify "First-time setup: installing components. This can take a few minutes…"
+  rm -rf "$DIR/.venv"
+  if ! "$DIR/setup.sh" > "$LOG" 2>&1 || ! "$PY" -c "import yt_dlp, webview" >/dev/null 2>&1; then
+    alert "Setup failed. Check your internet connection and try again.
+
+Details: $LOG"
+    exit 1
+  fi
+  rmdir "$LOCK" 2>/dev/null
+fi
+exec "$PY" "$DIR/app.py" >> /tmp/video-downloader.log 2>&1
